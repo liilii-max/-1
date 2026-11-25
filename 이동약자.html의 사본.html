@@ -1,0 +1,2028 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>3분의 벽 - 재난 이동약자 시뮬레이터</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    body {
+      background-color: #050505;
+      color: #e0e0e0;
+      font-family: 'Courier New', Courier, monospace;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      touch-action: none;
+    }
+    /* 3D 도트/픽셀화를 위한 캔버스 스타일 */
+    canvas {
+      width: 100vw !important;
+      height: 100vh !important;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      display: block;
+    }
+    /* 점진적 암전용 검은 막 */
+    #blackout-layer {
+      position: fixed;
+      inset: 0;
+      background: #000000;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 15;
+    }
+    /* 컷신 자막 오버레이 */
+    #cutscene-subtitle {
+      position: fixed;
+      bottom: 14%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.85);
+      border: 2px solid #ffffff;
+      color: #ffffff;
+      padding: 14px 26px;
+      font-size: 1.15rem;
+      font-weight: bold;
+      text-align: center;
+      z-index: 18;
+      display: none;
+      width: 88%;
+      max-width: 640px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+      letter-spacing: 1px;
+    }
+    /* 상단 사운드 조절 버튼 & 패널 */
+    #sound-toggle-btn {
+      position: fixed;
+      top: 18px;
+      right: 18px;
+      z-index: 35;
+      background: rgba(15, 15, 18, 0.9);
+      border: 2px solid #ff3b3b;
+      color: #ffffff;
+      padding: 8px 14px;
+      font-size: 0.9rem;
+      font-weight: bold;
+      font-family: inherit;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+    }
+    #sound-toggle-btn:hover {
+      background: rgba(60, 15, 15, 0.95);
+    }
+    #sound-mixer-panel {
+      position: fixed;
+      top: 62px;
+      right: 18px;
+      width: 280px;
+      background: rgba(12, 12, 15, 0.95);
+      border: 2px solid #ff3b3b;
+      padding: 14px 16px;
+      z-index: 35;
+      display: none;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.85);
+    }
+    .mixer-title {
+      font-size: 0.95rem;
+      font-weight: bold;
+      color: #ffdf5d;
+      margin-bottom: 12px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #333;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .mixer-reset {
+      background: #2a2a2e;
+      color: #ccc;
+      border: 1px solid #555;
+      padding: 2px 7px;
+      font-size: 0.75rem;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    .mixer-reset:hover {
+      background: #444;
+      color: #fff;
+    }
+    .mixer-row {
+      margin-bottom: 10px;
+    }
+    .mixer-row:last-child {
+      margin-bottom: 0;
+    }
+    .mixer-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      color: #e0e0e0;
+      margin-bottom: 4px;
+    }
+    .mixer-val {
+      color: #ff8888;
+      font-weight: bold;
+    }
+    input[type="range"].mixer-slider {
+      width: 100%;
+      accent-color: #ff3b3b;
+      cursor: pointer;
+      height: 6px;
+      background: #2c2c30;
+    }
+    /* 상단 HUD */
+    #hud {
+      position: fixed;
+      top: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      z-index: 12;
+      pointer-events: none;
+      width: 92%;
+      max-width: 640px;
+    }
+    #timer {
+      font-size: 2rem;
+      font-weight: bold;
+      color: #ff3b3b;
+      text-shadow: 2px 2px 0px #000;
+      letter-spacing: 2px;
+    }
+    #objective {
+      margin-top: 8px;
+      padding: 10px 16px;
+      background: rgba(20, 0, 0, 0.88);
+      border: 2px solid #ff3b3b;
+      color: #ffffff;
+      font-size: 1.1rem;
+      font-weight: bold;
+      letter-spacing: 1px;
+      box-shadow: 0 0 15px rgba(255, 0, 0, 0.45);
+    }
+    #sub-status {
+      margin-top: 6px;
+      font-size: 0.92rem;
+      color: #ffbbbb;
+      text-shadow: 1px 1px 0 #000;
+      min-height: 1.4em;
+    }
+    /* 2D 방향 지시 HUD */
+    #hud-guide {
+      margin: 10px auto 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(10, 10, 10, 0.86);
+      border: 2px solid #ff3b3b;
+      padding: 8px 16px;
+      box-shadow: 0 0 14px rgba(255, 59, 59, 0.4);
+    }
+    #hud-arrow-box {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(255, 59, 59, 0.16);
+      border: 2px solid #ff5555;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #hud-arrow-svg {
+      width: 28px;
+      height: 28px;
+      transform-origin: center center;
+      transition: transform 0.06s linear;
+      filter: drop-shadow(0 0 4px rgba(255, 59, 59, 0.9));
+    }
+    #hud-guide-text {
+      text-align: left;
+      line-height: 1.35;
+    }
+    #hud-direction-label {
+      font-size: 0.95rem;
+      font-weight: bold;
+      color: #ffdf5d;
+    }
+    #hud-distance {
+      font-size: 0.85rem;
+      color: #ffffff;
+    }
+    /* PC 조작 안내 */
+    #controls-hint {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      background: rgba(0, 0, 0, 0.75);
+      border: 1px solid #444;
+      padding: 10px 14px;
+      font-size: 0.85rem;
+      color: #aaa;
+      z-index: 10;
+      pointer-events: none;
+      line-height: 1.5;
+    }
+    /* 모바일 가상 컨트롤러 */
+    #mobile-controls {
+      position: fixed;
+      bottom: 22px;
+      left: 0;
+      right: 0;
+      padding: 0 22px;
+      display: none;
+      justify-content: space-between;
+      align-items: flex-end;
+      z-index: 14;
+      pointer-events: none;
+    }
+    .control-cluster {
+      display: flex;
+      gap: 12px;
+      pointer-events: auto;
+    }
+    .control-cluster.vertical {
+      flex-direction: column;
+    }
+    .touch-btn {
+      width: 64px;
+      height: 64px;
+      background: rgba(20, 20, 20, 0.78);
+      border: 2px solid #ff3b3b;
+      color: #ffffff;
+      font-size: 1.35rem;
+      font-weight: bold;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
+      cursor: pointer;
+    }
+    .touch-btn span {
+      font-size: 0.68rem;
+      color: #ffbbbb;
+      margin-top: 2px;
+    }
+    .touch-btn:active,
+    .touch-btn.active {
+      background: rgba(255, 59, 59, 0.55);
+      transform: scale(0.95);
+    }
+    @media (pointer: coarse), (max-width: 900px) {
+      #controls-hint {
+        display: none !important;
+      }
+      #timer {
+        font-size: 1.65rem;
+      }
+      #objective {
+        font-size: 0.98rem;
+        padding: 8px 12px;
+      }
+      #sound-toggle-btn {
+        top: 12px;
+        right: 12px;
+        padding: 6px 10px;
+        font-size: 0.8rem;
+      }
+      #sound-mixer-panel {
+        top: 50px;
+        right: 12px;
+        width: 255px;
+      }
+    }
+    /* 시작 및 엔딩 오버레이 */
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 5, 5, 0.95);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 24px;
+      z-index: 25;
+    }
+    .overlay h1 {
+      font-size: 2rem;
+      color: #ff3b3b;
+      margin-bottom: 16px;
+      letter-spacing: 2px;
+    }
+    .overlay p {
+      max-width: 540px;
+      line-height: 1.7;
+      color: #cccccc;
+      margin-bottom: 28px;
+      font-size: 1rem;
+    }
+    button.primary-btn {
+      background: #ff3b3b;
+      color: #000;
+      border: none;
+      padding: 14px 32px;
+      font-size: 1.1rem;
+      font-weight: bold;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button.primary-btn:hover {
+      background: #ff6b6b;
+    }
+    #ending-screen {
+      display: none;
+      background: #000000;
+      z-index: 30;
+    }
+    .ending-message {
+      max-width: 620px;
+      color: #ffffff;
+      font-size: 1.3rem;
+      line-height: 1.9;
+      margin-bottom: 24px;
+      font-weight: bold;
+    }
+    .ending-sub {
+      color: #888888;
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 사운드 조절 버튼 및 개별 볼륨 믹서 -->
+  <button id="sound-toggle-btn" type="button">🔊 소리 조절</button>
+  <div id="sound-mixer-panel">
+    <div class="mixer-title">
+      <span>채널별 음량 설정</span>
+      <button id="mixer-reset-btn" class="mixer-reset" type="button">초기화</button>
+    </div>
+    <div class="mixer-row">
+      <div class="mixer-label"><span>전체 음량 (Master)</span><span class="mixer-val" id="val-master">90%</span></div>
+      <input type="range" class="mixer-slider" data-channel="master" min="0" max="100" value="90" />
+    </div>
+    <div class="mixer-row">
+      <div class="mixer-label"><span>화재 경보·사이렌</span><span class="mixer-val" id="val-alarm">85%</span></div>
+      <input type="range" class="mixer-slider" data-channel="alarm" min="0" max="100" value="85" />
+    </div>
+    <div class="mixer-row">
+      <div class="mixer-label"><span>화재 불길 소리</span><span class="mixer-val" id="val-fire">80%</span></div>
+      <input type="range" class="mixer-slider" data-channel="fire" min="0" max="100" value="80" />
+    </div>
+    <div class="mixer-row">
+      <div class="mixer-label"><span>스프링클러 물소리</span><span class="mixer-val" id="val-sprinkler">30%</span></div>
+      <input type="range" class="mixer-slider" data-channel="sprinkler" min="0" max="100" value="30" />
+    </div>
+    <div class="mixer-row">
+      <div class="mixer-label"><span>휠체어 바퀴 소리</span><span class="mixer-val" id="val-wheel">85%</span></div>
+      <input type="range" class="mixer-slider" data-channel="wheel" min="0" max="100" value="85" />
+    </div>
+    <div class="mixer-row">
+      <div class="mixer-label"><span>심장 박동·효과음</span><span class="mixer-val" id="val-sfx">90%</span></div>
+      <input type="range" class="mixer-slider" data-channel="sfx" min="0" max="100" value="90" />
+    </div>
+  </div>
+
+  <!-- 점진적 암전 레이어 -->
+  <div id="blackout-layer"></div>
+
+  <!-- 컷신 자막 -->
+  <div id="cutscene-subtitle"></div>
+
+  <!-- 상단 상태창 & 2D 방향 지시 HUD -->
+  <div id="hud" style="display: none;">
+    <div id="timer">03:00</div>
+    <div id="objective">[목표: 비상 계단으로 이동하십시오]</div>
+    <div id="sub-status">화재가 발생했습니다. 상단 유도 화살표를 따라 대피하십시오.</div>
+    <div id="hud-guide">
+      <div id="hud-arrow-box">
+        <svg id="hud-arrow-svg" viewBox="0 0 24 24" fill="none">
+          <path d="M12 2L20 14H14.5V22H9.5V14H4L12 2Z" fill="#ff3b3b" stroke="#ffffff" stroke-width="1.4"/>
+        </svg>
+      </div>
+      <div id="hud-guide-text">
+        <div id="hud-direction-label">목표 방향: 전방</div>
+        <div id="hud-distance">남은 거리: 73m</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 하단 PC 조작키 안내 -->
+  <div id="controls-hint" style="display: none;">
+    [W / S] 바퀴 굴리기 (전진/후진)<br/>
+    [A / D] 휠체어 방향 전환<br/>
+    * 상단 붉은 유도 화살표를 따라가십시오.
+  </div>
+
+  <!-- 모바일 가상 조이스틱 -->
+  <div id="mobile-controls">
+    <div class="control-cluster">
+      <button class="touch-btn" data-key="a">◀<span>좌회전</span></button>
+      <button class="touch-btn" data-key="d">▶<span>우회전</span></button>
+    </div>
+    <div class="control-cluster vertical">
+      <button class="touch-btn" data-key="w">▲<span>전진</span></button>
+      <button class="touch-btn" data-key="s">▼<span>후진</span></button>
+    </div>
+  </div>
+
+  <!-- 시작 화면 -->
+  <div id="start-screen" class="overlay">
+    <h1>[긴급] 지하철 역사 화재 발생</h1>
+    <p>
+      당신은 휠체어를 이용하는 승객입니다.<br/>
+      지하철을 타기 위해 승강장으로 내려온 순간,<br/>
+      예기치 못한 재난 경보가 울리기 시작합니다.
+    </p>
+    <button id="start-btn" class="primary-btn">시뮬레이션 시작</button>
+  </div>
+
+  <!-- 엔딩 화면 -->
+  <div id="ending-screen" class="overlay">
+    <div class="ending-message">
+      "휠체어 장애인들은 재난 상황에서<br/>
+      계단과 엘리베이터 사이를 오가며<br/>
+      여러 위험을 겪고 있습니다."
+    </div>
+    <div class="ending-sub" id="return-countdown">잠시 후 처음 화면으로 돌아갑니다...</div>
+  </div>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <script>
+    // ==========================================
+    // 1. 채널별 독립 음량 제어 웹 오디오 엔진
+    // ==========================================
+    const DEFAULT_VOLUMES = {
+      master: 0.90,
+      alarm: 0.85,
+      fire: 0.80,
+      sprinkler: 0.30,
+      wheel: 0.85,
+      sfx: 0.90
+    };
+    const volSettings = { ...DEFAULT_VOLUMES };
+
+    let audioCtx = null;
+    let masterGain = null;
+    let envFilter = null;
+    let stationEchoIn = null;
+    let pinkNoiseBuffer = null;
+
+    // 채널별 독립 GainNode 버스
+    let alarmBusGain = null;
+    let fireBusGain = null;
+    let sprinklerBusGain = null;
+    let wheelBusGain = null;
+    let sfxEnvBusGain = null;
+    let sfxDirectBusGain = null;
+
+    let alarmInterval = null;
+    let wheelNoiseSource = null;
+    let wheelFilter = null;
+    let wheelDynamicGain = null;
+
+    let fireRumbleSource = null;
+    let sprinklerSource = null;
+    let heartbeatCooldown = 0;
+    let lastBumpTime = 0;
+
+    function createPinkNoiseBuffer(ctx) {
+      const bufferSize = ctx.sampleRate * 2;
+      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+      const output = buffer.getChannelData(0);
+      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      for (let i = 0; i < bufferSize; i++) {
+        const white = Math.random() * 2 - 1;
+        b0 = 0.99886 * b0 + white * 0.0555179;
+        b1 = 0.99332 * b1 + white * 0.0750759;
+        b2 = 0.96900 * b2 + white * 0.1538520;
+        b3 = 0.86650 * b3 + white * 0.3104856;
+        b4 = 0.55000 * b4 + white * 0.5329522;
+        b5 = -0.7616 * b5 - white * 0.0168980;
+        output[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.06;
+        b6 = white * 0.115926;
+      }
+      return buffer;
+    }
+
+    function applyChannelVolumes() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      if (masterGain) masterGain.gain.setTargetAtTime(volSettings.master, now, 0.02);
+      if (alarmBusGain) alarmBusGain.gain.setTargetAtTime(volSettings.alarm, now, 0.02);
+      if (fireBusGain) fireBusGain.gain.setTargetAtTime(volSettings.fire, now, 0.02);
+      if (sprinklerBusGain) sprinklerBusGain.gain.setTargetAtTime(volSettings.sprinkler, now, 0.02);
+      if (wheelBusGain) wheelBusGain.gain.setTargetAtTime(volSettings.wheel, now, 0.02);
+      if (sfxEnvBusGain) sfxEnvBusGain.gain.setTargetAtTime(volSettings.sfx, now, 0.02);
+      if (sfxDirectBusGain) sfxDirectBusGain.gain.setTargetAtTime(volSettings.sfx, now, 0.02);
+    }
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        masterGain = audioCtx.createGain();
+        masterGain.gain.value = volSettings.master;
+        masterGain.connect(audioCtx.destination);
+
+        // 외부 환경음 로우패스 필터 (평시 18000Hz -> 암전 시 먹먹함 연출)
+        envFilter = audioCtx.createBiquadFilter();
+        envFilter.type = 'lowpass';
+        envFilter.frequency.value = 18000;
+        envFilter.Q.value = 0.8;
+        envFilter.connect(masterGain);
+
+        // 지하철 승강장 에코(잔향) 버스
+        stationEchoIn = audioCtx.createGain();
+        stationEchoIn.gain.value = 0.30;
+        const delayNode = audioCtx.createDelay();
+        delayNode.delayTime.value = 0.21;
+        const feedbackGain = audioCtx.createGain();
+        feedbackGain.gain.value = 0.34;
+        const echoTone = audioCtx.createBiquadFilter();
+        echoTone.type = 'lowpass';
+        echoTone.frequency.value = 2400;
+
+        stationEchoIn.connect(delayNode);
+        delayNode.connect(echoTone);
+        echoTone.connect(feedbackGain);
+        feedbackGain.connect(delayNode);
+        echoTone.connect(envFilter);
+
+        // 채널별 독립 버스 생성
+        alarmBusGain = audioCtx.createGain();
+        alarmBusGain.gain.value = volSettings.alarm;
+        alarmBusGain.connect(envFilter);
+        alarmBusGain.connect(stationEchoIn);
+
+        fireBusGain = audioCtx.createGain();
+        fireBusGain.gain.value = volSettings.fire;
+        fireBusGain.connect(envFilter);
+        fireBusGain.connect(stationEchoIn);
+
+        sprinklerBusGain = audioCtx.createGain();
+        sprinklerBusGain.gain.value = volSettings.sprinkler;
+        sprinklerBusGain.connect(envFilter);
+        sprinklerBusGain.connect(stationEchoIn);
+
+        wheelBusGain = audioCtx.createGain();
+        wheelBusGain.gain.value = volSettings.wheel;
+        wheelBusGain.connect(envFilter);
+
+        sfxEnvBusGain = audioCtx.createGain();
+        sfxEnvBusGain.gain.value = volSettings.sfx;
+        sfxEnvBusGain.connect(envFilter);
+        sfxEnvBusGain.connect(stationEchoIn);
+
+        sfxDirectBusGain = audioCtx.createGain();
+        sfxDirectBusGain.gain.value = volSettings.sfx;
+        sfxDirectBusGain.connect(masterGain);
+
+        pinkNoiseBuffer = createPinkNoiseBuffer(audioCtx);
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      applyChannelVolumes();
+    }
+
+    // 사운드 믹서 UI 이벤트 바인딩
+    const soundToggleBtn = document.getElementById('sound-toggle-btn');
+    const soundMixerPanel = document.getElementById('sound-mixer-panel');
+    const mixerResetBtn = document.getElementById('mixer-reset-btn');
+
+    soundToggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      initAudio();
+      const isOpen = soundMixerPanel.style.display === 'block';
+      soundMixerPanel.style.display = isOpen ? 'none' : 'block';
+      soundToggleBtn.blur();
+    });
+
+    document.querySelectorAll('.mixer-slider').forEach((slider) => {
+      const channel = slider.getAttribute('data-channel');
+      const valSpan = document.getElementById(`val-${channel}`);
+
+      const handleSlide = () => {
+        initAudio();
+        const pct = Number(slider.value);
+        volSettings[channel] = pct / 100;
+        valSpan.innerText = `${pct}%`;
+        applyChannelVolumes();
+      };
+
+      slider.addEventListener('input', handleSlide);
+      slider.addEventListener('change', () => slider.blur());
+      slider.addEventListener('mouseup', () => slider.blur());
+      slider.addEventListener('touchend', () => slider.blur());
+    });
+
+    mixerResetBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      Object.assign(volSettings, DEFAULT_VOLUMES);
+      document.querySelectorAll('.mixer-slider').forEach((slider) => {
+        const channel = slider.getAttribute('data-channel');
+        const pct = Math.round(volSettings[channel] * 100);
+        slider.value = pct;
+        document.getElementById(`val-${channel}`).innerText = `${pct}%`;
+      });
+      applyChannelVolumes();
+      mixerResetBtn.blur();
+    });
+
+    function stopAllContinuousAudio() {
+      clearInterval(alarmInterval);
+      alarmInterval = null;
+
+      [wheelNoiseSource, fireRumbleSource, sprinklerSource].forEach((src) => {
+        if (src) {
+          try { src.stop(); src.disconnect(); } catch (e) {}
+        }
+      });
+      wheelNoiseSource = null;
+      fireRumbleSource = null;
+      sprinklerSource = null;
+    }
+
+    // 휠체어 연속 주행음 루프 시작
+    function startWheelAudioLoop() {
+      if (!audioCtx) return;
+      if (wheelNoiseSource) {
+        try { wheelNoiseSource.stop(); } catch (e) {}
+      }
+
+      wheelNoiseSource = audioCtx.createBufferSource();
+      wheelNoiseSource.buffer = pinkNoiseBuffer;
+      wheelNoiseSource.loop = true;
+
+      wheelFilter = audioCtx.createBiquadFilter();
+      wheelFilter.type = 'bandpass';
+      wheelFilter.frequency.value = 180;
+      wheelFilter.Q.value = 1.2;
+
+      wheelDynamicGain = audioCtx.createGain();
+      wheelDynamicGain.gain.value = 0.0;
+
+      wheelNoiseSource.connect(wheelFilter);
+      wheelFilter.connect(wheelDynamicGain);
+      wheelDynamicGain.connect(wheelBusGain);
+      wheelNoiseSource.start();
+    }
+
+    // 매 프레임 속도 및 점자블록 여부에 따라 바퀴 마찰음 실시간 조절
+    function updateWheelAudio(dt, speed, angVel, onTactile, wheelDist) {
+      if (!audioCtx || !wheelDynamicGain || !wheelFilter) return;
+
+      const effectiveSpeed = Math.abs(speed) + Math.abs(angVel) * 0.35;
+      const now = audioCtx.currentTime;
+
+      if (effectiveSpeed < 0.04) {
+        wheelDynamicGain.gain.setTargetAtTime(0.0, now, 0.05);
+        return;
+      }
+
+      const normSpeed = Math.min(1.0, effectiveSpeed / 2.6);
+
+      if (onTactile && Math.abs(speed) > 0.08) {
+        const rattleWave = 0.5 + 0.5 * Math.sin(wheelDist * 55);
+        const targetGain = (0.09 + rattleWave * 0.25) * normSpeed;
+        const targetFreq = 320 + rattleWave * 480 + normSpeed * 180;
+
+        wheelFilter.Q.setTargetAtTime(2.6, now, 0.03);
+        wheelFilter.frequency.setTargetAtTime(targetFreq, now, 0.02);
+        wheelDynamicGain.gain.setTargetAtTime(targetGain, now, 0.02);
+      } else {
+        const targetGain = 0.15 * normSpeed;
+        const targetFreq = 130 + normSpeed * 190;
+
+        wheelFilter.Q.setTargetAtTime(1.0, now, 0.06);
+        wheelFilter.frequency.setTargetAtTime(targetFreq, now, 0.05);
+        wheelDynamicGain.gain.setTargetAtTime(targetGain, now, 0.05);
+      }
+    }
+
+    // 화재 불길 소리(저주파 연소음) + 스프링클러 물소리 분리 시작
+    function startFireAndSprinklerAmbience() {
+      if (!audioCtx) return;
+
+      // 1) 화재 불길 저주파 연소 럼블
+      fireRumbleSource = audioCtx.createBufferSource();
+      fireRumbleSource.buffer = pinkNoiseBuffer;
+      fireRumbleSource.loop = true;
+
+      const fireLowFilter = audioCtx.createBiquadFilter();
+      fireLowFilter.type = 'lowpass';
+      fireLowFilter.frequency.value = 260;
+
+      const fireLocalGain = audioCtx.createGain();
+      fireLocalGain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      fireLocalGain.gain.exponentialRampToValueAtTime(0.28, audioCtx.currentTime + 1.2);
+
+      fireRumbleSource.connect(fireLowFilter);
+      fireLowFilter.connect(fireLocalGain);
+      fireLocalGain.connect(fireBusGain);
+      fireRumbleSource.start();
+
+      // 2) 스프링클러 물방울 소리 (별도 채널)
+      sprinklerSource = audioCtx.createBufferSource();
+      sprinklerSource.buffer = pinkNoiseBuffer;
+      sprinklerSource.loop = true;
+
+      const sprinklerFilter = audioCtx.createBiquadFilter();
+      sprinklerFilter.type = 'bandpass';
+      sprinklerFilter.frequency.value = 1650;
+      sprinklerFilter.Q.value = 0.7;
+
+      const sprinklerLocalGain = audioCtx.createGain();
+      sprinklerLocalGain.gain.setValueAtTime(0.001, audioCtx.currentTime);
+      sprinklerLocalGain.gain.exponentialRampToValueAtTime(0.14, audioCtx.currentTime + 1.5);
+
+      sprinklerSource.connect(sprinklerFilter);
+      sprinklerFilter.connect(sprinklerLocalGain);
+      sprinklerLocalGain.connect(sprinklerBusGain);
+      sprinklerSource.start();
+    }
+
+    // 불꽃 타닥거리는 파열음 (Crackle)
+    function playFireCracklePop() {
+      if (!audioCtx || !fireBusGain || volSettings.fire <= 0.01) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const filter = audioCtx.createBiquadFilter();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(140 + Math.random() * 260, now);
+      osc.frequency.exponentialRampToValueAtTime(45, now + 0.045);
+
+      filter.type = 'bandpass';
+      filter.frequency.value = 900 + Math.random() * 900;
+
+      const amp = 0.04 + Math.random() * 0.06;
+      gain.gain.setValueAtTime(amp, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(fireBusGain);
+
+      osc.start(now);
+      osc.stop(now + 0.055);
+    }
+
+    // 한국 지하철 화재 경보 (비상벨 타종 + 사이렌)
+    function startFireAlarm() {
+      clearInterval(alarmInterval);
+      let beatCount = 0;
+
+      const triggerAlarmCycle = () => {
+        if (!isRunning || isEnded || !isFireStarted || !audioCtx) return;
+        const now = audioCtx.currentTime;
+
+        const sirenOsc = audioCtx.createOscillator();
+        const sirenFilter = audioCtx.createBiquadFilter();
+        const sirenGain = audioCtx.createGain();
+
+        sirenOsc.type = 'sawtooth';
+        sirenOsc.frequency.setValueAtTime(680, now);
+        sirenOsc.frequency.exponentialRampToValueAtTime(940, now + 0.42);
+        sirenOsc.frequency.exponentialRampToValueAtTime(720, now + 0.72);
+
+        sirenFilter.type = 'bandpass';
+        sirenFilter.frequency.value = 1100;
+        sirenFilter.Q.value = 1.4;
+
+        sirenGain.gain.setValueAtTime(0.001, now);
+        sirenGain.gain.linearRampToValueAtTime(0.08, now + 0.06);
+        sirenGain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+
+        sirenOsc.connect(sirenFilter);
+        sirenFilter.connect(sirenGain);
+        sirenGain.connect(alarmBusGain);
+
+        sirenOsc.start(now);
+        sirenOsc.stop(now + 0.76);
+
+        if (beatCount % 2 === 0) {
+          for (let i = 0; i < 6; i++) {
+            const t = now + i * 0.065;
+            const bellOsc = audioCtx.createOscillator();
+            const bellGain = audioCtx.createGain();
+            bellOsc.type = 'triangle';
+            bellOsc.frequency.setValueAtTime(2350 + (i % 2) * 180, t);
+
+            bellGain.gain.setValueAtTime(0.04, t);
+            bellGain.gain.exponentialRampToValueAtTime(0.001, t + 0.055);
+
+            bellOsc.connect(bellGain);
+            bellGain.connect(alarmBusGain);
+
+            bellOsc.start(t);
+            bellOsc.stop(t + 0.06);
+          }
+        }
+        beatCount++;
+      };
+
+      triggerAlarmCycle();
+      alarmInterval = setInterval(triggerAlarmCycle, 950);
+    }
+
+    // 엘리베이터 도착 2음 차임벨
+    function playElevatorDing() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const notes = [
+        { freq: 659.25, time: 0.0, dur: 0.55 },
+        { freq: 523.25, time: 0.28, dur: 0.85 }
+      ];
+
+      notes.forEach((n) => {
+        const osc = audioCtx.createOscillator();
+        const overtone = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const overGain = audioCtx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(n.freq, now + n.time);
+
+        overtone.type = 'sine';
+        overtone.frequency.setValueAtTime(n.freq * 2, now + n.time);
+
+        gain.gain.setValueAtTime(0.001, now + n.time);
+        gain.gain.linearRampToValueAtTime(0.15, now + n.time + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + n.time + n.dur);
+
+        overGain.gain.setValueAtTime(0.001, now + n.time);
+        overGain.gain.linearRampToValueAtTime(0.03, now + n.time + 0.015);
+        overGain.gain.exponentialRampToValueAtTime(0.001, now + n.time + n.dur * 0.5);
+
+        osc.connect(gain);
+        overtone.connect(overGain);
+        overGain.connect(gain);
+
+        gain.connect(sfxEnvBusGain);
+
+        osc.start(now + n.time);
+        osc.stop(now + n.time + n.dur + 0.05);
+        overtone.start(now + n.time);
+        overtone.stop(now + n.time + n.dur + 0.05);
+      });
+    }
+
+    // 엘리베이터 문 개폐 구동음
+    function playElevatorDoorSound() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const filter = audioCtx.createBiquadFilter();
+      const gain = audioCtx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(75, now);
+      osc.frequency.linearRampToValueAtTime(92, now + 0.4);
+      osc.frequency.linearRampToValueAtTime(68, now + 0.85);
+
+      filter.type = 'lowpass';
+      filter.frequency.value = 220;
+
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.linearRampToValueAtTime(0.10, now + 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+
+      osc.connect(filter);
+      filter.connect(gain);
+      gain.connect(sfxEnvBusGain);
+
+      osc.start(now);
+      osc.stop(now + 0.92);
+    }
+
+    // 경로 변경 경고음
+    function playSwitchAlert() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      [0, 0.16].forEach((offset) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(440, now + offset);
+        osc.frequency.setValueAtTime(330, now + offset + 0.06);
+
+        gain.gain.setValueAtTime(0.001, now + offset);
+        gain.gain.linearRampToValueAtTime(0.16, now + offset + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.13);
+
+        osc.connect(gain);
+        gain.connect(sfxDirectBusGain);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.14);
+      });
+    }
+
+    // 충돌 둔탁음
+    function playCollisionBump() {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      if (now - lastBumpTime < 0.35) return;
+      lastBumpTime = now;
+
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(115, now);
+      osc.frequency.exponentialRampToValueAtTime(36, now + 0.18);
+
+      gain.gain.setValueAtTime(0.24, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+
+      osc.connect(gain);
+      gain.connect(sfxEnvBusGain);
+      osc.start(now);
+      osc.stop(now + 0.22);
+    }
+
+    // 심장 박동 ("두근-두근")
+    function playHeartbeat(intensity) {
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+      const beats = [
+        { delay: 0.0, freq: 68, vol: 0.30 * intensity },
+        { delay: 0.19, freq: 54, vol: 0.22 * intensity }
+      ];
+
+      beats.forEach((b) => {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(b.freq, now + b.delay);
+        osc.frequency.exponentialRampToValueAtTime(28, now + b.delay + 0.15);
+
+        gain.gain.setValueAtTime(0.001, now + b.delay);
+        gain.gain.linearRampToValueAtTime(b.vol, now + b.delay + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + b.delay + 0.16);
+
+        osc.connect(gain);
+        gain.connect(sfxDirectBusGain);
+
+        osc.start(now + b.delay);
+        osc.stop(now + b.delay + 0.18);
+      });
+    }
+
+    // 암전 진행도에 따른 청각 먹먹함 및 심박 업데이트
+    function updateBlackoutAudio(dt, progress) {
+      if (!audioCtx || !envFilter) return;
+      const now = audioCtx.currentTime;
+
+      const cutoff = 18000 * Math.pow(0.015, progress);
+      envFilter.frequency.setTargetAtTime(Math.max(240, cutoff), now, 0.1);
+
+      if (progress > 0.05) {
+        heartbeatCooldown -= dt;
+        if (heartbeatCooldown <= 0) {
+          const intensity = Math.min(1.0, 0.35 + progress * 0.85);
+          playHeartbeat(intensity);
+          heartbeatCooldown = Math.max(0.52, 0.95 - progress * 0.43);
+        }
+      }
+    }
+
+    // ==========================================
+    // 2. Three.js 3D 도트(픽셀) 씬 & 화면 비율 동적 보정
+    // ==========================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0e1318);
+    const fog = new THREE.FogExp2(0x141a22, 0.022);
+    scene.fog = fog;
+
+    const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.08, 120);
+    camera.rotation.order = 'YXZ';
+    scene.add(camera);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    const PIXEL_BASE_HEIGHT = 270;
+
+    function onWindowResize() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const aspect = w / h;
+      camera.aspect = aspect;
+      camera.updateProjectionMatrix();
+
+      const pixelWidth = Math.max(160, Math.round(PIXEL_BASE_HEIGHT * aspect));
+      renderer.setSize(pixelWidth, PIXEL_BASE_HEIGHT, false);
+    }
+
+    onWindowResize();
+    window.addEventListener('resize', onWindowResize);
+    document.body.appendChild(renderer.domElement);
+
+    // --- 1인칭 휠체어 파츠 ---
+    const wheelchairGroup = new THREE.Group();
+    const frameMat = new THREE.MeshLambertMaterial({ color: 0x3b424c });
+    const padMat = new THREE.MeshLambertMaterial({ color: 0x18181b });
+    const rimMat = new THREE.MeshLambertMaterial({ color: 0xb8c0cc });
+
+    const leftArm = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.045, 0.42), padMat);
+    leftArm.position.set(-0.31, -0.34, -0.32);
+    wheelchairGroup.add(leftArm);
+
+    const rightArm = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.045, 0.42), padMat);
+    rightArm.position.set(0.31, -0.34, -0.32);
+    wheelchairGroup.add(rightArm);
+
+    const leftPost = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.18, 0.03), frameMat);
+    leftPost.position.set(-0.31, -0.43, -0.45);
+    wheelchairGroup.add(leftPost);
+
+    const rightPost = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.18, 0.03), frameMat);
+    rightPost.position.set(0.31, -0.43, -0.45);
+    wheelchairGroup.add(rightPost);
+
+    const footRest = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.025, 0.18), frameMat);
+    footRest.position.set(0, -0.62, -0.68);
+    footRest.rotation.x = 0.25;
+    wheelchairGroup.add(footRest);
+
+    function createWheelAssembly(sideSign) {
+      const wheelPivot = new THREE.Group();
+      wheelPivot.position.set(sideSign * 0.36, -0.54, -0.34);
+
+      const tire = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.028, 6, 14), padMat);
+      tire.rotation.y = Math.PI / 2;
+      wheelPivot.add(tire);
+
+      const handRim = new THREE.Mesh(new THREE.TorusGeometry(0.21, 0.012, 6, 14), rimMat);
+      handRim.rotation.y = Math.PI / 2;
+      handRim.position.x = sideSign * 0.028;
+      wheelPivot.add(handRim);
+
+      for (let i = 0; i < 4; i++) {
+        const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.5, 0.015), rimMat);
+        spoke.rotation.x = (i * Math.PI) / 4;
+        wheelPivot.add(spoke);
+      }
+      return wheelPivot;
+    }
+
+    const leftWheel = createWheelAssembly(-1);
+    const rightWheel = createWheelAssembly(1);
+    wheelchairGroup.add(leftWheel);
+    wheelchairGroup.add(rightWheel);
+
+    const chairLight = new THREE.PointLight(0xddeeff, 0.75, 1.8);
+    chairLight.position.set(0, -0.1, -0.2);
+    wheelchairGroup.add(chairLight);
+
+    camera.add(wheelchairGroup);
+
+    // 조명 설정
+    const ambientLight = new THREE.AmbientLight(0x556677, 1.1);
+    scene.add(ambientLight);
+
+    const stationLights = [];
+    const lightBulbs = [];
+    for (let z = -36; z <= 36; z += 14) {
+      const pLight = new THREE.PointLight(0xdce8f5, 2.2, 22);
+      pLight.position.set(0, 3.6, z);
+      scene.add(pLight);
+      stationLights.push(pLight);
+
+      const bulbMat = new THREE.MeshBasicMaterial({ color: 0xeef6ff });
+      const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.18, 0.4), bulbMat);
+      bulb.position.set(0, 3.9, z);
+      scene.add(bulb);
+      lightBulbs.push(bulbMat);
+    }
+
+    // ==========================================
+    // 3. 실제 지하철 역사 공간 & 스크린도어 & 전광판
+    // ==========================================
+    const wallMat = new THREE.MeshLambertMaterial({ color: 0x3a3a40 });
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x252528 });
+    const tactileMat = new THREE.MeshLambertMaterial({ color: 0xd4b113 });
+    const safetyLineMat = new THREE.MeshBasicMaterial({ color: 0xe6b800 });
+
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(12, 0.2, 86), floorMat);
+    floor.position.set(0, -0.1, 0);
+    scene.add(floor);
+
+    const trackFloor = new THREE.Mesh(
+      new THREE.BoxGeometry(5, 0.2, 86),
+      new THREE.MeshLambertMaterial({ color: 0x121214 })
+    );
+    trackFloor.position.set(-8.5, -1.1, 0);
+    scene.add(trackFloor);
+
+    const railMat = new THREE.MeshLambertMaterial({ color: 0x55555a });
+    const rail1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.15, 86), railMat);
+    rail1.position.set(-7.6, -0.95, 0);
+    scene.add(rail1);
+    const rail2 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.15, 86), railMat);
+    rail2.position.set(-9.1, -0.95, 0);
+    scene.add(rail2);
+
+    const ceiling = new THREE.Mesh(new THREE.BoxGeometry(17, 0.2, 86), wallMat);
+    ceiling.position.set(-2.5, 4.0, 0);
+    scene.add(ceiling);
+
+    const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 4.2, 86), wallMat);
+    rightWall.position.set(6, 2, 0);
+    scene.add(rightWall);
+
+    const tunnelWall = new THREE.Mesh(new THREE.BoxGeometry(0.5, 5.2, 86), new THREE.MeshLambertMaterial({ color: 0x1c1c20 }));
+    tunnelWall.position.set(-11, 1.5, 0);
+    scene.add(tunnelWall);
+
+    const northBackWall = new THREE.Mesh(new THREE.BoxGeometry(17, 4.2, 0.5), wallMat);
+    northBackWall.position.set(-2.5, 2, -43);
+    scene.add(northBackWall);
+
+    const southBackWall = new THREE.Mesh(new THREE.BoxGeometry(17, 4.2, 0.5), wallMat);
+    southBackWall.position.set(-2.5, 2, 41.8);
+    scene.add(southBackWall);
+
+    // 스크린도어(PSD)
+    const psdFrameMat = new THREE.MeshLambertMaterial({ color: 0x707882 });
+    const psdGlassMat = new THREE.MeshBasicMaterial({ color: 0x22333b, transparent: true, opacity: 0.45 });
+    const psdHeaderMat = new THREE.MeshLambertMaterial({ color: 0x1d4e89 });
+
+    const psdHeader = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.55, 82), psdHeaderMat);
+    psdHeader.position.set(-5.8, 2.75, -1);
+    scene.add(psdHeader);
+
+    for (let z = -38; z <= 36; z += 4) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.6, 0.4), psdFrameMat);
+      post.position.set(-5.8, 1.3, z);
+      scene.add(post);
+
+      const glass = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.4, 3.6), psdGlassMat);
+      glass.position.set(-5.8, 1.25, z + 2);
+      scene.add(glass);
+    }
+
+    const safetyStrip = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.02, 80), safetyLineMat);
+    safetyStrip.position.set(-5.2, 0.01, -1);
+    scene.add(safetyStrip);
+
+    const tactileStrip = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.03, 74), tactileMat);
+    tactileStrip.position.set(-2.5, 0.015, 2);
+    scene.add(tactileStrip);
+
+    function createSignTexture(text, bgColor, textColor, subText = '') {
+      const c = document.createElement('canvas');
+      c.width = 512;
+      c.height = 128;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, 512, 128);
+      ctx.strokeStyle = textColor;
+      ctx.lineWidth = 6;
+      ctx.strokeRect(6, 6, 500, 116);
+      ctx.fillStyle = textColor;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      if (subText) {
+        ctx.font = 'bold 34px Courier New';
+        ctx.fillText(text, 256, 46);
+        ctx.font = 'bold 24px Courier New';
+        ctx.fillText(subText, 256, 92);
+      } else {
+        ctx.font = 'bold 38px Courier New';
+        ctx.fillText(text, 256, 66);
+      }
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.NearestFilter;
+      return tex;
+    }
+
+    // 천장 LED 전광판 텍스처
+    const ledBoards = [];
+    const ledNormalTex = createSignTexture('이번 열차: 시청 방면 진입중', '#0a141e', '#38bdf8', '승객 여러분 안전선 밖으로 물러나십시오');
+    const ledFireTex1 = createSignTexture('⚠ [긴급] 화재 발생 ⚠', '#1a0000', '#ff2222', '즉시 역사 밖으로 대피하십시오');
+    const ledFireTex2 = createSignTexture('⛔ 엘리베이터 사용 금지 ⛔', '#1a0000', '#ffaa00', '화재 시 계단을 이용하십시오');
+
+    for (let z = -22; z <= 22; z += 22) {
+      const boardGroup = new THREE.Group();
+      boardGroup.position.set(0, 3.35, z);
+
+      const housing = new THREE.Mesh(
+        new THREE.BoxGeometry(3.4, 0.75, 0.25),
+        new THREE.MeshLambertMaterial({ color: 0x111111 })
+      );
+      boardGroup.add(housing);
+
+      const rodL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), frameMat);
+      rodL.position.set(-1.3, 0.5, 0);
+      boardGroup.add(rodL);
+      const rodR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), frameMat);
+      rodR.position.set(1.3, 0.5, 0);
+      boardGroup.add(rodR);
+
+      const screenMat = new THREE.MeshBasicMaterial({ map: ledNormalTex });
+      const frontScreen = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.65), screenMat);
+      frontScreen.position.z = 0.13;
+      boardGroup.add(frontScreen);
+
+      const backScreen = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.65), screenMat);
+      backScreen.position.z = -0.13;
+      backScreen.rotation.y = Math.PI;
+      boardGroup.add(backScreen);
+
+      scene.add(boardGroup);
+      ledBoards.push(screenMat);
+    }
+
+    // 중앙 기둥 + 역명판
+    const pillarGeo = new THREE.BoxGeometry(0.9, 4.0, 0.9);
+    const pillars = [];
+    const stationNameTex = createSignTexture('신 도 림  Sindorim', '#003366', '#ffffff', '2호선 / 1호선 환승역');
+
+    for (let z = -28; z <= 28; z += 14) {
+      const p = new THREE.Mesh(pillarGeo, wallMat);
+      p.position.set(0, 2, z);
+      scene.add(p);
+      pillars.push(p);
+
+      const nameSign = new THREE.Mesh(
+        new THREE.BoxGeometry(0.96, 0.35, 0.96),
+        new THREE.MeshBasicMaterial({ map: stationNameTex })
+      );
+      nameSign.position.set(0, 2.35, z);
+      scene.add(nameSign);
+    }
+
+    // 벤치, 소화전, 노선도
+    const benchMat = new THREE.MeshLambertMaterial({ color: 0x4d5661 });
+    const fireBoxMat = new THREE.MeshLambertMaterial({ color: 0xb81d1d });
+    const mapSignTex = createSignTexture('지하철 노선도 / 대피안내', '#1e293b', '#93c5fd');
+
+    for (let z = -26; z <= 26; z += 17) {
+      const benchSeat = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.08, 2.2), benchMat);
+      benchSeat.position.set(5.4, 0.45, z);
+      scene.add(benchSeat);
+
+      const benchBack = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.45, 2.2), benchMat);
+      benchBack.position.set(5.65, 0.7, z);
+      scene.add(benchBack);
+
+      const hydrant = new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.1, 0.65), fireBoxMat);
+      hydrant.position.set(5.65, 1.1, z + 4.5);
+      scene.add(hydrant);
+
+      const wallMap = new THREE.Mesh(
+        new THREE.BoxGeometry(0.1, 1.1, 2.0),
+        new THREE.MeshBasicMaterial({ map: mapSignTex })
+      );
+      wallMap.position.set(5.7, 1.8, z - 4.5);
+      scene.add(wallMap);
+    }
+
+    // --- [목적지 1: 북쪽 끝 (z = -37)] 비상 계단 ---
+    const stairGroup = new THREE.Group();
+    for (let i = 0; i < 12; i++) {
+      const step = new THREE.Mesh(
+        new THREE.BoxGeometry(4.2, 0.25, 0.5),
+        new THREE.MeshLambertMaterial({ color: i % 2 === 0 ? 0x444444 : 0x383838 })
+      );
+      step.position.set(2.2, 0.125 + i * 0.25, -37.0 - i * 0.45);
+      stairGroup.add(step);
+    }
+    scene.add(stairGroup);
+
+    const exitSign = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 0.55, 0.1),
+      new THREE.MeshBasicMaterial({ map: createSignTexture('STAIRS [비상 계단]', '#003300', '#33ff33') })
+    );
+    exitSign.position.set(2.2, 3.2, -37.0);
+    scene.add(exitSign);
+
+    // --- [목적지 2: 남쪽 끝 (z = +39.8)] 장애인용 엘리베이터 ---
+    const elevFrame = new THREE.Mesh(
+      new THREE.BoxGeometry(3.4, 3.2, 1.8),
+      new THREE.MeshLambertMaterial({ color: 0x555555 })
+    );
+    elevFrame.position.set(-2.5, 1.6, 40.4);
+    scene.add(elevFrame);
+
+    const elevCabin = new THREE.Mesh(
+      new THREE.BoxGeometry(2.2, 2.5, 1.8),
+      new THREE.MeshLambertMaterial({ color: 0x3b444b })
+    );
+    elevCabin.position.set(-2.5, 1.25, 40.4);
+    scene.add(elevCabin);
+
+    const elevDoorLeft = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 2.5, 0.12),
+      new THREE.MeshLambertMaterial({ color: 0x7a828a })
+    );
+    elevDoorLeft.position.set(-3.05, 1.25, 39.5);
+    scene.add(elevDoorLeft);
+
+    const elevDoorRight = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 2.5, 0.12),
+      new THREE.MeshLambertMaterial({ color: 0x7a828a })
+    );
+    elevDoorRight.position.set(-1.95, 1.25, 39.5);
+    scene.add(elevDoorRight);
+
+    const elevNormalTex = createSignTexture('ELEVATOR [엘리베이터]', '#003311', '#00ff66');
+    const elevStopTex = createSignTexture('화재 시 운행 중지', '#440000', '#ff2222');
+
+    const elevSign = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 0.55, 0.1),
+      new THREE.MeshBasicMaterial({ map: elevNormalTex })
+    );
+    elevSign.position.set(-2.5, 3.0, 39.45);
+    elevSign.rotation.y = Math.PI;
+    scene.add(elevSign);
+
+    // ==========================================
+    // 4. 입체 휴머노이드 대피 군중 (NPC) & 연기/스프링클러
+    // ==========================================
+    const npcs = [];
+    const shirtColors = [0x3b6998, 0x984b43, 0x4a7c59, 0x8c7a3e, 0x5c4b7d, 0x7a7a85];
+    const pantsColors = [0x1f242d, 0x2b2b2b, 0x3b352e, 0x243447];
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xd9a78b });
+    const hairMat = new THREE.MeshLambertMaterial({ color: 0x1a1614 });
+
+    function createHumanoidNPC(index) {
+      const root = new THREE.Group();
+
+      const shirtMat = new THREE.MeshLambertMaterial({ color: shirtColors[index % shirtColors.length] });
+      const pantsMat = new THREE.MeshLambertMaterial({ color: pantsColors[index % pantsColors.length] });
+
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.58, 0.24), shirtMat);
+      torso.position.y = 1.08;
+      root.add(torso);
+
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.26, 0.24), skinMat);
+      head.position.y = 1.53;
+      root.add(head);
+
+      const hair = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.12, 0.26), hairMat);
+      hair.position.y = 1.63;
+      root.add(hair);
+
+      const leftArmPivot = new THREE.Group();
+      leftArmPivot.position.set(-0.28, 1.32, 0);
+      const leftArmMesh = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.52, 0.14), shirtMat);
+      leftArmMesh.position.y = -0.22;
+      leftArmPivot.add(leftArmMesh);
+      root.add(leftArmPivot);
+
+      const rightArmPivot = new THREE.Group();
+      rightArmPivot.position.set(0.28, 1.32, 0);
+      const rightArmMesh = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.52, 0.14), shirtMat);
+      rightArmMesh.position.y = -0.22;
+      rightArmPivot.add(rightArmMesh);
+      root.add(rightArmPivot);
+
+      const leftLegPivot = new THREE.Group();
+      leftLegPivot.position.set(-0.11, 0.78, 0);
+      const leftLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.76, 0.18), pantsMat);
+      leftLegMesh.position.y = -0.38;
+      leftLegPivot.add(leftLegMesh);
+      root.add(leftLegPivot);
+
+      const rightLegPivot = new THREE.Group();
+      rightLegPivot.position.set(0.11, 0.78, 0);
+      const rightLegMesh = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.76, 0.18), pantsMat);
+      rightLegMesh.position.y = -0.38;
+      rightLegPivot.add(rightLegMesh);
+      root.add(rightLegPivot);
+
+      scene.add(root);
+
+      return {
+        mesh: root,
+        leftArm: leftArmPivot,
+        rightArm: rightArmPivot,
+        leftLeg: leftLegPivot,
+        rightLeg: rightLegPivot,
+        speed: 3.8 + Math.random() * 2.0,
+        phase: Math.random() * Math.PI * 2
+      };
+    }
+
+    for (let i = 0; i < 22; i++) {
+      npcs.push(createHumanoidNPC(i));
+    }
+
+    function updateNPCs(dt) {
+      const stairTarget = new THREE.Vector3(2.2, 0, -37.0);
+
+      npcs.forEach((npc) => {
+        if (!npc.mesh.visible) return;
+
+        const dir = stairTarget.clone().sub(npc.mesh.position);
+        dir.y = 0;
+        const dist = dir.length();
+
+        if (dist < 1.3) {
+          npc.mesh.visible = false;
+          return;
+        }
+
+        dir.normalize();
+        let nextX = npc.mesh.position.x + dir.x * npc.speed * dt;
+        let nextZ = npc.mesh.position.z + dir.z * npc.speed * dt;
+
+        for (const p of pillars) {
+          const dx = nextX - p.position.x;
+          const dz = nextZ - p.position.z;
+          if (Math.abs(dx) < 0.78 && Math.abs(dz) < 0.78) {
+            const avoidSide = npc.mesh.position.x >= p.position.x ? 1 : -1;
+            nextX = npc.mesh.position.x + avoidSide * npc.speed * dt;
+            nextZ = npc.mesh.position.z;
+            break;
+          }
+        }
+
+        npc.mesh.position.x = Math.max(-4.8, Math.min(4.8, nextX));
+        npc.mesh.position.z = nextZ;
+        npc.mesh.lookAt(stairTarget.x, 0, stairTarget.z);
+
+        const runCycle = clock.elapsedTime * 15 + npc.phase;
+        const swing = Math.sin(runCycle) * 0.75;
+        npc.leftLeg.rotation.x = swing;
+        npc.rightLeg.rotation.x = -swing;
+        npc.leftArm.rotation.x = -swing * 0.85;
+        npc.rightArm.rotation.x = swing * 0.85;
+        npc.mesh.position.y = Math.abs(Math.cos(runCycle)) * 0.09;
+
+        if (!isCutscene) {
+          const pDist = Math.hypot(npc.mesh.position.x - camera.position.x, npc.mesh.position.z - camera.position.z);
+          if (pDist < 0.85) {
+            camera.rotation.z = (Math.random() - 0.5) * 0.08;
+            velocity *= 0.6;
+            playCollisionBump();
+          } else {
+            camera.rotation.z *= 0.9;
+          }
+        }
+      });
+    }
+
+    // 연기 파티클
+    const smokes = [];
+    const smokeGeo = new THREE.BoxGeometry(0.85, 0.85, 0.85);
+    const smokeMat = new THREE.MeshBasicMaterial({ color: 0x111111, transparent: true, opacity: 0.55 });
+    for (let i = 0; i < 65; i++) {
+      const s = new THREE.Mesh(smokeGeo, smokeMat);
+      s.position.set((Math.random() - 0.5) * 11, 2.2 + Math.random() * 1.6, -38 + Math.random() * 76);
+      s.visible = false;
+      scene.add(s);
+      smokes.push(s);
+    }
+
+    // 스프링클러 물방울 파티클
+    const waterDrops = [];
+    const dropGeo = new THREE.BoxGeometry(0.03, 0.14, 0.03);
+    const dropMat = new THREE.MeshBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.45 });
+    for (let i = 0; i < 90; i++) {
+      const d = new THREE.Mesh(dropGeo, dropMat);
+      d.position.set((Math.random() - 0.5) * 11, Math.random() * 3.8, -36 + Math.random() * 72);
+      d.visible = false;
+      scene.add(d);
+      waterDrops.push(d);
+    }
+
+    // ==========================================
+    // 5. 입력 처리 (PC 키보드 + 모바일 터치 패드)
+    // ==========================================
+    let isRunning = false;
+    let isEnded = false;
+    let isCutscene = false;
+    let cutsceneTimer = 0;
+    let doorCloseSoundPlayed = false;
+    let isFireStarted = false;
+
+    let timeRemaining = 180;
+    let stage = 1;
+    let blackoutProgress = 0;
+
+    const keys = { w: false, s: false, a: false, d: false };
+    let velocity = 0;
+    let prevVelocity = 0;
+    let angularVelocity = 0;
+    let wheelDistance = 0;
+
+    function resetKeys() {
+      keys.w = false;
+      keys.s = false;
+      keys.a = false;
+      keys.d = false;
+      document.querySelectorAll('.touch-btn').forEach((btn) => btn.classList.remove('active'));
+    }
+
+    window.addEventListener('blur', resetKeys);
+
+    window.addEventListener('keydown', (e) => {
+      if (isCutscene) return;
+      const k = e.key.toLowerCase();
+      if (k === 'w' || e.key === 'ArrowUp') keys.w = true;
+      if (k === 's' || e.key === 'ArrowDown') keys.s = true;
+      if (k === 'a' || e.key === 'ArrowLeft') keys.a = true;
+      if (k === 'd' || e.key === 'ArrowRight') keys.d = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+      const k = e.key.toLowerCase();
+      if (k === 'w' || e.key === 'ArrowUp') keys.w = false;
+      if (k === 's' || e.key === 'ArrowDown') keys.s = false;
+      if (k === 'a' || e.key === 'ArrowLeft') keys.a = false;
+      if (k === 'd' || e.key === 'ArrowRight') keys.d = false;
+    });
+
+    document.querySelectorAll('.touch-btn').forEach((btn) => {
+      const keyName = btn.getAttribute('data-key');
+
+      const pressStart = (e) => {
+        e.preventDefault();
+        initAudio();
+        if (isCutscene || !isRunning || isEnded) return;
+        keys[keyName] = true;
+        btn.classList.add('active');
+      };
+
+      const pressEnd = (e) => {
+        e.preventDefault();
+        keys[keyName] = false;
+        btn.classList.remove('active');
+      };
+
+      btn.addEventListener('touchstart', pressStart, { passive: false });
+      btn.addEventListener('touchend', pressEnd, { passive: false });
+      btn.addEventListener('touchcancel', pressEnd, { passive: false });
+      btn.addEventListener('mousedown', pressStart);
+      btn.addEventListener('mouseup', pressEnd);
+      btn.addEventListener('mouseleave', pressEnd);
+    });
+
+    function showGameplayControls() {
+      document.getElementById('hud').style.display = 'block';
+      const isTouchOrSmall = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0) || (window.innerWidth <= 900);
+      if (isTouchOrSmall) {
+        document.getElementById('mobile-controls').style.display = 'flex';
+        document.getElementById('controls-hint').style.display = 'none';
+      } else {
+        document.getElementById('controls-hint').style.display = 'block';
+        document.getElementById('mobile-controls').style.display = 'none';
+      }
+    }
+
+    const timerEl = document.getElementById('timer');
+    const objectiveEl = document.getElementById('objective');
+    const subStatusEl = document.getElementById('sub-status');
+    const blackoutEl = document.getElementById('blackout-layer');
+    const subtitleEl = document.getElementById('cutscene-subtitle');
+    const hudArrowSvg = document.getElementById('hud-arrow-svg');
+    const hudDirLabel = document.getElementById('hud-direction-label');
+    const hudDistLabel = document.getElementById('hud-distance');
+    const clock = new THREE.Clock();
+
+    function updateHudGuide(targetPos) {
+      const dx = targetPos.x - camera.position.x;
+      const dz = targetPos.z - camera.position.z;
+      const dist = Math.round(Math.hypot(dx, dz));
+
+      const yaw = camera.rotation.y;
+      const fx = -Math.sin(yaw);
+      const fz = -Math.cos(yaw);
+      const rx = Math.cos(yaw);
+      const rz = -Math.sin(yaw);
+
+      const localForward = dx * fx + dz * fz;
+      const localRight = dx * rx + dz * rz;
+
+      const angleDeg = (Math.atan2(localRight, localForward) * 180) / Math.PI;
+      hudArrowSvg.style.transform = `rotate(${angleDeg.toFixed(1)}deg)`;
+
+      let dirText = '전방';
+      if (angleDeg >= -35 && angleDeg <= 35) dirText = '전방 직진';
+      else if (angleDeg > 35 && angleDeg < 145) dirText = '우측 방향';
+      else if (angleDeg < -35 && angleDeg > -145) dirText = '좌측 방향';
+      else dirText = '뒤쪽 방향 (회전 필요)';
+
+      hudDirLabel.innerText = `목표 방향: ${dirText}`;
+      hudDistLabel.innerText = `남은 거리: ${dist}m`;
+    }
+
+    function igniteFireEmergency() {
+      if (isFireStarted) return;
+      isFireStarted = true;
+
+      scene.background = new THREE.Color(0x0a0505);
+      fog.color = new THREE.Color(0x110808);
+      fog.density = 0.036;
+      ambientLight.color.setHex(0x443333);
+      chairLight.color.setHex(0xffcccc);
+
+      stationLights.forEach((l) => l.color.setHex(0xff2222));
+      lightBulbs.forEach((b) => b.color.setHex(0xff2222));
+
+      smokes.forEach((s) => (s.visible = true));
+      waterDrops.forEach((d) => (d.visible = true));
+
+      startFireAndSprinklerAmbience();
+      startFireAlarm();
+    }
+
+    function startSimulation() {
+      isRunning = true;
+      isEnded = false;
+      isCutscene = true;
+      cutsceneTimer = 0;
+      doorCloseSoundPlayed = false;
+      isFireStarted = false;
+
+      timeRemaining = 180;
+      stage = 1;
+      blackoutProgress = 0;
+      velocity = 0;
+      prevVelocity = 0;
+      angularVelocity = 0;
+      wheelDistance = 0;
+      heartbeatCooldown = 0;
+      resetKeys();
+
+      scene.background = new THREE.Color(0x0e1318);
+      fog.color = new THREE.Color(0x141a22);
+      fog.density = 0.022;
+      ambientLight.color.setHex(0x556677);
+      chairLight.color.setHex(0xddeeff);
+      stationLights.forEach((l) => {
+        l.color.setHex(0xdce8f5);
+        l.intensity = 2.2;
+      });
+      lightBulbs.forEach((b) => b.color.setHex(0xeef6ff));
+      smokes.forEach((s) => (s.visible = false));
+      waterDrops.forEach((d) => (d.visible = false));
+
+      ledBoards.forEach((mat) => {
+        mat.map = ledNormalTex;
+        mat.needsUpdate = true;
+      });
+
+      camera.position.set(-2.5, 1.15, 40.3);
+      camera.rotation.set(0, 0, 0);
+      elevDoorLeft.position.x = -3.05;
+      elevDoorRight.position.x = -1.95;
+
+      blackoutEl.style.opacity = '0';
+      subtitleEl.style.display = 'block';
+      subtitleEl.style.borderColor = '#ffffff';
+      subtitleEl.style.color = '#ffffff';
+      subtitleEl.innerText = "띠링— 엘리베이터가 승강장에 도착했습니다.";
+
+      objectiveEl.innerText = "[목표: 비상 계단으로 이동하십시오]";
+      objectiveEl.style.background = "rgba(20, 0, 0, 0.88)";
+      subStatusEl.innerText = "화재가 발생했습니다. 상단 유도 화살표를 따라 대피하십시오.";
+      
+      elevSign.material.map = elevNormalTex;
+      elevSign.material.needsUpdate = true;
+
+      npcs.forEach((npc, idx) => {
+        npc.mesh.visible = true;
+        if (idx === 0) {
+          npc.mesh.position.set(-1.3, 0, 33.5);
+          npc.mesh.lookAt(-2.5, 0, 38.0);
+        } else if (idx === 1) {
+          npc.mesh.position.set(0.6, 0, 31.0);
+          npc.mesh.lookAt(-2.5, 0, 38.0);
+        } else if (idx === 2) {
+          npc.mesh.position.set(-3.8, 0, 29.5);
+          npc.mesh.lookAt(-2.5, 0, 38.0);
+        } else {
+          npc.mesh.position.set(
+            (Math.random() - 0.5) * 8.5,
+            0,
+            -18 + Math.random() * 46
+          );
+        }
+      });
+
+      document.getElementById('start-screen').style.display = 'none';
+      document.getElementById('ending-screen').style.display = 'none';
+      document.getElementById('hud').style.display = 'none';
+      document.getElementById('controls-hint').style.display = 'none';
+      document.getElementById('mobile-controls').style.display = 'none';
+
+      initAudio();
+      stopAllContinuousAudio();
+      if (envFilter) envFilter.frequency.setValueAtTime(18000, audioCtx.currentTime);
+      startWheelAudioLoop();
+      playElevatorDing();
+      playElevatorDoorSound();
+
+      clock.start();
+      animate();
+    }
+
+    document.getElementById('start-btn').addEventListener('click', startSimulation);
+
+    // ==========================================
+    // 6. 인트로 오프닝 애니메이션 업데이트 (0 ~ 6.8초)
+    // ==========================================
+    function updateCutscene(dt) {
+      cutsceneTimer += dt;
+
+      if (cutsceneTimer < 1.0) {
+        const openRatio = cutsceneTimer / 1.0;
+        elevDoorLeft.position.x = -3.05 - openRatio * 0.95;
+        elevDoorRight.position.x = -1.95 + openRatio * 0.95;
+      }
+
+      if (cutsceneTimer >= 0.8 && cutsceneTimer <= 2.6) {
+        const moveSpeed = 2.25;
+        camera.position.z -= moveSpeed * dt;
+        camera.position.y = 1.15;
+        wheelDistance += moveSpeed * dt;
+        leftWheel.rotation.x -= (moveSpeed / 0.26) * dt;
+        rightWheel.rotation.x -= (moveSpeed / 0.26) * dt;
+        updateWheelAudio(dt, moveSpeed, 0, false, wheelDistance);
+      } else {
+        updateWheelAudio(dt, 0, 0, false, wheelDistance);
+      }
+
+      if (cutsceneTimer >= 2.5 && !isFireStarted) {
+        elevDoorLeft.position.x = -3.05;
+        elevDoorRight.position.x = -1.95;
+        if (!doorCloseSoundPlayed) {
+          playElevatorDoorSound();
+          doorCloseSoundPlayed = true;
+        }
+        igniteFireEmergency();
+        subtitleEl.style.borderColor = '#ff3b3b';
+        subtitleEl.style.color = '#ffaaaa';
+        subtitleEl.innerText = "⚠ [경보] 역사 내 화재 발생! ⚠";
+      }
+
+      if (cutsceneTimer >= 3.6) {
+        subtitleEl.style.color = '#ffffff';
+        subtitleEl.innerText = '승객: "불이야!! 화재가 발생했습니다! 빨리 계단으로 대피하세요!"';
+        updateNPCs(dt);
+      }
+
+      if (cutsceneTimer >= 6.8) {
+        isCutscene = false;
+        subtitleEl.style.display = 'none';
+        showGameplayControls();
+        updateHudGuide(new THREE.Vector3(2.2, 0, -37.0));
+      }
+    }
+
+    function triggerBlackoutEnding() {
+      if (isEnded) return;
+      isEnded = true;
+      isRunning = false;
+      resetKeys();
+      stopAllContinuousAudio();
+
+      document.getElementById('hud').style.display = 'none';
+      document.getElementById('controls-hint').style.display = 'none';
+      document.getElementById('mobile-controls').style.display = 'none';
+      subtitleEl.style.display = 'none';
+      document.getElementById('ending-screen').style.display = 'flex';
+
+      let secLeft = 6;
+      const countdownEl = document.getElementById('return-countdown');
+      countdownEl.innerText = `${secLeft}초 후 처음 화면으로 돌아갑니다...`;
+
+      const retInterval = setInterval(() => {
+        secLeft -= 1;
+        if (secLeft <= 0) {
+          clearInterval(retInterval);
+          document.getElementById('ending-screen').style.display = 'none';
+          document.getElementById('start-screen').style.display = 'flex';
+          blackoutEl.style.opacity = '0';
+        } else {
+          countdownEl.innerText = `${secLeft}초 후 처음 화면으로 돌아갑니다...`;
+        }
+      }, 1000);
+    }
+
+    function updatePlayer(dt) {
+      const speedFactor = stage === 1 ? 1.0 : (stage === 2 ? 0.85 : 0.2);
+      const maxSpeed = 2.6 * speedFactor;
+      const accel = 3.4 * speedFactor;
+      const friction = 3.5;
+
+      if (keys.w) {
+        velocity += accel * dt;
+      } else if (keys.s) {
+        velocity -= accel * 0.7 * dt;
+      } else {
+        if (Math.abs(velocity) < 0.05) velocity = 0;
+        else velocity -= Math.sign(velocity) * friction * dt;
+      }
+      velocity = Math.max(-maxSpeed * 0.6, Math.min(maxSpeed, velocity));
+
+      const accelRate = (velocity - prevVelocity) / (dt || 0.016);
+      prevVelocity = velocity;
+      const targetPitch = Math.max(-0.022, Math.min(0.022, accelRate * 0.0065));
+      camera.rotation.x += (targetPitch - camera.rotation.x) * Math.min(1, dt * 10);
+
+      const turnSpeed = 1.35;
+      if (keys.a) angularVelocity = turnSpeed;
+      else if (keys.d) angularVelocity = -turnSpeed;
+      else angularVelocity = 0;
+
+      camera.rotation.y += angularVelocity * dt;
+
+      const wheelRadius = 0.26;
+      leftWheel.rotation.x -= ((velocity - angularVelocity * 0.35) / wheelRadius) * dt;
+      rightWheel.rotation.x -= ((velocity + angularVelocity * 0.35) / wheelRadius) * dt;
+
+      const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(new THREE.Vector3(0, 1, 0), camera.rotation.y);
+      let nextX = camera.position.x + forward.x * velocity * dt;
+      let nextZ = camera.position.z + forward.z * velocity * dt;
+
+      nextX = Math.max(-5.0, Math.min(4.8, nextX));
+      nextZ = Math.max(-36.2, Math.min(38.8, nextZ));
+
+      for (const p of pillars) {
+        const dx = nextX - p.position.x;
+        const dz = nextZ - p.position.z;
+        if (Math.abs(dx) < 0.95 && Math.abs(dz) < 0.95) {
+          if (Math.abs(velocity) > 0.3) playCollisionBump();
+          velocity *= -0.2;
+          nextX = camera.position.x;
+          nextZ = camera.position.z;
+        }
+      }
+
+      // [Stage 1 -> Stage 2] 북쪽 끝 비상 계단 도달 시
+      if (nextZ < -34.8 && nextX > -0.5) {
+        if (nextZ < -35.8) {
+          if (Math.abs(velocity) > 0.3) playCollisionBump();
+          velocity = 0;
+          nextZ = -35.8;
+        }
+        if (stage === 1) {
+          stage = 2;
+          playSwitchAlert();
+          objectiveEl.innerText = "[목표: 반대편 끝 엘리베이터를 이용하십시오]";
+          subStatusEl.innerText = "계단 턱 진입 불가! 뒤돌아 승강장 반대편 끝의 엘리베이터로 이동하십시오.";
+        }
+      }
+
+      // [Stage 2 -> Stage 3] 남쪽 끝 엘리베이터 도달 시
+      if (stage === 2 && nextZ > 36.8 && nextX < 0.5) {
+        stage = 3;
+        playSwitchAlert();
+
+        elevSign.material.map = elevStopTex;
+        elevSign.material.needsUpdate = true;
+
+        objectiveEl.innerText = "[운행 중지: 화재 시 엘리베이터 사용 불가]";
+        objectiveEl.style.background = "rgba(70, 0, 0, 0.95)";
+        subStatusEl.innerText = "엘리베이터가 작동하지 않습니다. 다시 계단으로 이동하십시오...";
+      }
+
+      camera.position.x = nextX;
+      camera.position.z = nextZ;
+
+      const onTactile =
+        Math.abs(camera.position.x - (-2.5)) < 0.42 &&
+        camera.position.z >= -35 &&
+        camera.position.z <= 39;
+
+      wheelDistance += Math.abs(velocity) * dt;
+      updateWheelAudio(dt, velocity, angularVelocity, onTactile, wheelDistance);
+
+      const speedRatio = Math.abs(velocity) / (maxSpeed || 1);
+      if (onTactile && speedRatio > 0.03) {
+        const casterJitter = Math.sin(wheelDistance * 55) * 0.011 * speedRatio;
+        camera.position.y = 1.15 + casterJitter;
+      } else {
+        camera.position.y += (1.15 - camera.position.y) * Math.min(1, dt * 15);
+      }
+
+      const targetPos = stage === 1
+        ? new THREE.Vector3(2.2, 0, -37.0)
+        : (stage === 2
+            ? new THREE.Vector3(-2.5, 0, 39.8)
+            : new THREE.Vector3(2.2, 0, -37.0));
+
+      updateHudGuide(targetPos);
+    }
+
+    function animate() {
+      if (!isRunning || isEnded) return;
+      requestAnimationFrame(animate);
+
+      const dt = Math.min(clock.getDelta(), 0.1);
+
+      if (isFireStarted && Math.random() < dt * 7.5) {
+        playFireCracklePop();
+      }
+
+      if (isCutscene) {
+        updateCutscene(dt);
+        if (isFireStarted) {
+          const blink = Math.sin(clock.elapsedTime * 7) > 0 ? 2.5 : 0.3;
+          stationLights.forEach((light) => (light.intensity = blink));
+
+          const showFirstMsg = Math.floor(clock.elapsedTime / 1.5) % 2 === 0;
+          const activeLedTex = showFirstMsg ? ledFireTex1 : ledFireTex2;
+          ledBoards.forEach((mat) => {
+            if (mat.map !== activeLedTex) {
+              mat.map = activeLedTex;
+              mat.needsUpdate = true;
+            }
+          });
+
+          smokes.forEach((s) => {
+            s.position.y -= 0.12 * dt;
+            if (s.position.y < 0.8) s.position.y = 3.6;
+            s.rotation.y += 0.3 * dt;
+          });
+          waterDrops.forEach((d) => {
+            d.position.y -= 4.8 * dt;
+            if (d.position.y < 0) d.position.y = 3.8;
+          });
+        }
+        renderer.render(scene, camera);
+        return;
+      }
+
+      timeRemaining -= dt;
+
+      if (stage === 3) {
+        blackoutProgress += dt * 0.23;
+      } else if (timeRemaining <= 0) {
+        blackoutProgress = 1;
+      }
+
+      blackoutProgress = Math.min(1, blackoutProgress);
+      blackoutEl.style.opacity = blackoutProgress.toFixed(3);
+      updateBlackoutAudio(dt, blackoutProgress);
+
+      if (blackoutProgress >= 1) {
+        triggerBlackoutEnding();
+        return;
+      }
+
+      const displayTime = Math.max(0, timeRemaining);
+      const mins = String(Math.floor(displayTime / 60)).padStart(2, '0');
+      const secs = String(Math.floor(displayTime % 60)).padStart(2, '0');
+      timerEl.innerText = `${mins}:${secs}`;
+
+      const baseFog = stage === 1 ? 0.036 : 0.056;
+      fog.density = baseFog + blackoutProgress * 0.12;
+
+      const blink = Math.sin(clock.elapsedTime * 7) > 0 ? 2.5 : 0.3;
+      stationLights.forEach((light) => {
+        light.intensity = blink;
+      });
+
+      const showFirstMsg = Math.floor(clock.elapsedTime / 1.5) % 2 === 0;
+      const activeLedTex = showFirstMsg ? ledFireTex1 : ledFireTex2;
+      ledBoards.forEach((mat) => {
+        if (mat.map !== activeLedTex) {
+          mat.map = activeLedTex;
+          mat.needsUpdate = true;
+        }
+      });
+
+      updateNPCs(dt);
+
+      smokes.forEach((s) => {
+        s.position.y -= 0.12 * dt;
+        if (s.position.y < 0.8) s.position.y = 3.6;
+        s.rotation.y += 0.3 * dt;
+      });
+
+      waterDrops.forEach((d) => {
+        d.position.y -= 4.8 * dt;
+        if (d.position.y < 0) d.position.y = 3.8;
+      });
+
+      updatePlayer(dt);
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>
